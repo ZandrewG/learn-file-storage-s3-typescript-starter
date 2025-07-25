@@ -1,9 +1,9 @@
 import { getBearerToken, validateJWT } from "../auth";
 import { respondWithJSON } from "./json";
-import { getVideo } from "../db/videos";
+import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
 import type { BunRequest } from "bun";
-import { BadRequestError, NotFoundError } from "./errors";
+import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 
 type Thumbnail = {
   data: ArrayBuffer;
@@ -47,7 +47,62 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
 
   console.log("uploading thumbnail for video", videoId, "by user", userID);
 
-  // TODO: implement the upload here
+  //*****TODO: implement the upload here*****//
+  const formData: FormData = await req.formData(); // parse the form data
+  
+  const file = formData.get("thumbnail");
 
-  return respondWithJSON(200, null);
+  if (!(file instanceof File)) {
+    throw new BadRequestError("Thumbnail file missing");
+  }
+  
+    // The File object extends the implementation of Blob, thus inheriting its properties and methods, including arrayBuffer
+    // https://developer.mozilla.org/en-US/docs/Web/API/File ; https://developer.mozilla.org/en-US/docs/Web/API/Blob
+    // Blob is a raw data. 
+
+  // Check size of the uploaded thumbnail
+  const MAX_UPLOAD_SIZE = 10 << 20; // 10 MB,  10*(2**20)
+  const fileSize = file.size
+  
+  if (fileSize > MAX_UPLOAD_SIZE) {
+    throw new BadRequestError("Thumbnail file is greater than 10 MB. Upload a smaller file.");
+  }
+
+  // Prepare the Thumbnail for Uploading
+
+  const mediaType: string = file.type;
+
+    // Read the image data
+  const imageBuffer: ArrayBuffer = await file.arrayBuffer();
+  
+  
+    // get Video Metadata
+  const videoMetaData = getVideo(cfg.db, videoId);
+
+  const { videoUserID } = videoMetaData?.userID as { videoUserID?: string};
+
+  if (!videoUserID) {
+    throw new UserForbiddenError("Retrieved user not the video owner.");
+  }
+
+  const thumbnailInfo: Thumbnail = {
+    data: imageBuffer,
+    mediaType: mediaType,
+  }
+
+  videoThumbnails.set(videoId, thumbnailInfo); // Assign the thumbnail to its corresponding video.
+
+    // Update the video metadata with the new URL
+  const port: number = 8091
+  const thumbnailURL: string = `http://localhost:${port}/api/thumbnails/:${videoId}`
+
+  videoMetaData!.thumbnailURL = thumbnailURL; // I am not sure about the use of the assertion operator here. 
+
+    // Update the database record 
+  updateVideo(cfg.db, videoMetaData!);
+  
+  console.log(videoMetaData!)
+  //**This will all work because the api/thumbnails/:videoID endpoint serves thumbnails from that global map.**//
+
+  return respondWithJSON(200, videoMetaData!);
 }
