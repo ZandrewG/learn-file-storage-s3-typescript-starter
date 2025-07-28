@@ -267,8 +267,8 @@ function viewVideo(video) {
     thumbnailImg.style.display = "none";
   } else {
     thumbnailImg.style.display = "block";
-    thumbnailImg.src = `${video.thumbnailURL}?v=${dateToday}`; // Cache busting for front end requesting image assets
-    // thumbnailImg.src = video.thumbnailURL; // Cache busting;Use the thumbnail URL directly, this is where the Cache-Control is set in the backend since Query Strings are slow
+    // thumbnailImg.src = `${video.thumbnailURL}?v=${dateToday}`; // Cache busting for front end requesting image assets
+    thumbnailImg.src = video.thumbnailURL; // Cache busting;Use the thumbnail URL directly, this is where the Cache-Control is set in the backend since Query Strings are slow
     // console.log("Thumbnail URL:", video.thumbnailURL);
   }
 
