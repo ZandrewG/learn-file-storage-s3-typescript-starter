@@ -2,7 +2,7 @@ import { getBearerToken, validateJWT } from "../auth";
 import { respondWithJSON } from "./json";
 import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
-import type { BunRequest } from "bun";
+import { pathToFileURL, type BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 
 type Thumbnail = {
@@ -10,7 +10,10 @@ type Thumbnail = {
   mediaType: string;
 };
 
-const videoThumbnails: Map<string, Thumbnail> = new Map();
+// const videoThumbnails: Map<string, Thumbnail> = new Map();
+// Commented out, since storing in memory is not practical due to non-persistence. 
+// better to store it as a blob in a database, or better yet in a file system. 
+// CH1, L6
 
 export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
   const { videoId } = req.params as { videoId?: string };
@@ -23,14 +26,23 @@ export async function handlerGetThumbnail(cfg: ApiConfig, req: BunRequest) {
     throw new NotFoundError("Couldn't find video");
   }
 
-  const thumbnail = videoThumbnails.get(videoId);
-  if (!thumbnail) {
-    throw new NotFoundError("Thumbnail not found");
+  const formData: FormData = await req.formData(); // parse the form data
+  
+  const file = formData.get("thumbnail");
+  if (!(file instanceof File)) {
+    throw new BadRequestError("Thumbnail file missing");
   }
 
-  return new Response(thumbnail.data, {
+  const imageArrayBuffer: ArrayBuffer = await file.arrayBuffer(); 
+  // const thumbnail = videoThumbnails.get(videoId);
+  // if (!thumbnail) {
+  //   throw new NotFoundError("Thumbnail not found");
+  // }
+  const mediaType: string = file.type;
+  console.log("In Get thumbnail,", mediaType)
+  return new Response(imageArrayBuffer, {
     headers: {
-      "Content-Type": thumbnail.mediaType,
+      "Content-Type": mediaType,
       "Cache-Control": "no-store",
     },
   });
@@ -68,40 +80,55 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     throw new BadRequestError("Thumbnail file is greater than 10 MB. Upload a smaller file.");
   }
 
-  // Prepare the Thumbnail for Uploading
+  //****Prepare the Thumbnail for Uploading*****
 
   const mediaType: string = file.type;
+  if (!(mediaType === "image/jpeg" || mediaType === "image/png")) {
+    throw new BadRequestError("Invalid file type. Upload an image file.")
+  }
 
-    // Read the image data
-  const imageBuffer: ArrayBuffer = await file.arrayBuffer();
+  // Read the image data, convert to a buffer-like/blob data
+  const imageArrayBuffer: ArrayBuffer = await file.arrayBuffer(); 
+  // const imageBuffer: Buffer = Buffer.from(imageArrayBuffer); // CH1-L6 adjustment, convert to Buffer
+  // const imageBase64: string = imageBuffer.toString("base64");// CH1-L6 adjustment, but inefficient
   
+
+  // const thumbnailDataURL: string = `data:${mediaType};base64,${imageBase64}` // CH1-L6 adjustment,
+    // https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Schemes/data
+    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types
+    // https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/MIME_types/Common_types
+    // https://www.iana.org/assignments/media-types/media-types.xhtml#image
+    // base64 format is safe in data URL
+
+  const nodePath = require('path');
+  const fileExtension: string = mediaType.split("/")[1]; // gets the 2nd part in MIME types, the subpart is the file extension
+  const filePath = nodePath.join(cfg.assetsRoot, `${videoId}.${fileExtension}`);
   
-    // get Video Metadata
+  Bun.write(filePath, imageArrayBuffer); 
+
+  //**get Video Metadata**
   const videoMetaData = getVideo(cfg.db, videoId);
 
-  const { videoUserID } = videoMetaData?.userID as { videoUserID?: string};
+  const videoUserID: string = videoMetaData!.userID;
 
-  if (!videoUserID) {
+  if (videoUserID !== userID) {
     throw new UserForbiddenError("Retrieved user not the video owner.");
   }
 
-  const thumbnailInfo: Thumbnail = {
-    data: imageBuffer,
-    mediaType: mediaType,
-  }
+  //**Update the video metadata with the new URL**
+  const port: number = Number(cfg.port);
+  // const thumbnailURL: string = `http://localhost:${port}/api/thumbnails/:${videoId}`
 
-  videoThumbnails.set(videoId, thumbnailInfo); // Assign the thumbnail to its corresponding video.
+  const thumbnailDataURL: string = filePath;// nodePath.join(`http://localhost:${port}/`, filePath)
+  // correct because you dont have to put localhost again since in the browser, it will go localhost:port/localhost:port/assets/....
 
-    // Update the video metadata with the new URL
-  const port: number = 8091
-  const thumbnailURL: string = `http://localhost:${port}/api/thumbnails/:${videoId}`
-
-  videoMetaData!.thumbnailURL = thumbnailURL; // I am not sure about the use of the assertion operator here. 
-
-    // Update the database record 
+  const time: Number = Date.now();
+  // const thumbnailDataURL: string = nodePath.join(filePath, `?v=${time}`) // versions for cache busting
+  videoMetaData!.thumbnailURL = thumbnailDataURL; // I am not sure about the use of the assertion operator here. 
+  console.log("thumbnaildataurl", videoMetaData)
+  // Update the database record 
   updateVideo(cfg.db, videoMetaData!);
   
-  console.log(videoMetaData!)
   //**This will all work because the api/thumbnails/:videoID endpoint serves thumbnails from that global map.**//
 
   return respondWithJSON(200, videoMetaData!);

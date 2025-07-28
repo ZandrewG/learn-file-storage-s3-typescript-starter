@@ -261,12 +261,15 @@ function viewVideo(video) {
   document.getElementById("video-description-display").textContent =
     video.description;
 
+  const dateToday = Date.now();
   const thumbnailImg = document.getElementById("thumbnail-image");
   if (!video.thumbnailURL) {
     thumbnailImg.style.display = "none";
   } else {
     thumbnailImg.style.display = "block";
-    thumbnailImg.src = video.thumbnailURL;
+    thumbnailImg.src = `${video.thumbnailURL}?v=${dateToday}`; // Cache busting for front end requesting image assets
+    // thumbnailImg.src = video.thumbnailURL; // Cache busting;Use the thumbnail URL directly, this is where the Cache-Control is set in the backend since Query Strings are slow
+    // console.log("Thumbnail URL:", video.thumbnailURL);
   }
 
   const videoPlayer = document.getElementById("video-player");
