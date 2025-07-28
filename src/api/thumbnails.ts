@@ -4,7 +4,8 @@ import { getVideo, updateVideo } from "../db/videos";
 import type { ApiConfig } from "../config";
 import { pathToFileURL, type BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
-
+import path from "path"
+import { randomBytes } from "crypto";
 type Thumbnail = {
   data: ArrayBuffer;
   mediaType: string;
@@ -100,9 +101,9 @@ export async function handlerUploadThumbnail(cfg: ApiConfig, req: BunRequest) {
     // https://www.iana.org/assignments/media-types/media-types.xhtml#image
     // base64 format is safe in data URL
 
-  const nodePath = require('path');
+  const antiCacheFileName = randomBytes(32).toString("base64url")
   const fileExtension: string = mediaType.split("/")[1]; // gets the 2nd part in MIME types, the subpart is the file extension
-  const filePath = nodePath.join(cfg.assetsRoot, `${videoId}.${fileExtension}`);
+  const filePath = path.join(cfg.assetsRoot, `${antiCacheFileName}.${fileExtension}`);
   
   await Bun.write(filePath, imageArrayBuffer); 
 
