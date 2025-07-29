@@ -6,6 +6,7 @@ import { pathToFileURL, type BunRequest } from "bun";
 import { BadRequestError, NotFoundError, UserForbiddenError } from "./errors";
 import path from "path"
 import { randomBytes } from "crypto";
+
 type Thumbnail = {
   data: ArrayBuffer;
   mediaType: string;
